@@ -19,11 +19,12 @@ package istio
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
+	"time"
+
 	"github.com/gogo/protobuf/types"
 	"knative.dev/pkg/apis"
 	"knative.dev/pkg/network"
-	"strings"
-	"time"
 
 	"github.com/kubeflow/kfserving/pkg/apis/serving/v1alpha2"
 	"github.com/kubeflow/kfserving/pkg/constants"
@@ -53,6 +54,9 @@ var (
 	ExplainerSpecMissing       = "ExplainerSpecMissing"
 	ExplainerStatusUnknown     = "ExplainerStatusUnknown"
 	ExplainerHostnameUnknown   = "ExplainerHostnameUnknown"
+	FairnessSpecMissing        = "FairnessSpecMissing"
+	FairnessStatusUnknown      = "FairnessStatusUnknown"
+	FairnessHostnameUnknown    = "FairnessHostnameUnknown"
 )
 
 // Message constants
@@ -60,6 +64,7 @@ var (
 	PredictorMissingMessage   = "Failed to reconcile predictor"
 	TransformerMissingMessage = "Failed to reconcile transformer"
 	ExplainerMissingMessage   = "Failed to reconcile explainer"
+	FairnessMissingMessage    = "Failed to reconcile fairness"
 )
 
 type IngressConfig struct {
@@ -152,6 +157,31 @@ func (r *VirtualServiceBuilder) getExplainerRouteDestination(meta metav1.Object,
 			return &httpRouteDestination, nil
 		} else {
 			return nil, createFailedStatus(explainerReason, ExplainerMissingMessage)
+		}
+	}
+	return nil, nil
+}
+
+func (r *VirtualServiceBuilder) getFairnessRouteDestination(meta metav1.Object, isCanary bool,
+	endpointSpec *v1alpha2.EndpointSpec, componentStatusMap *v1alpha2.ComponentStatusMap, weight int32) (*istiov1alpha3.HTTPRouteDestination, *v1alpha2.VirtualServiceStatus) {
+	if endpointSpec == nil {
+		return nil, nil
+	}
+	predictorHost := constants.DefaultPredictorServiceName(meta.GetName())
+	if isCanary {
+		predictorHost = constants.CanaryPredictorServiceName(meta.GetName())
+	}
+	if endpointSpec.Fairness != nil {
+		fairSpec, fairnessReason := getFairStatusConfigurationSpec(endpointSpec, componentStatusMap)
+		if fairSpec != nil {
+			predictorHost = constants.DefaultFairnessServiceName(meta.GetName())
+			if isCanary {
+				predictorHost = constants.CanaryFairnessServiceName(meta.GetName())
+			}
+			httpRouteDestination := createHTTPRouteDestination(predictorHost, meta.GetNamespace(), weight, r.ingressConfig.IngressServiceName)
+			return &httpRouteDestination, nil
+		} else {
+			return nil, createFailedStatus(fairnessReason, FairnessMissingMessage)
 		}
 	}
 	return nil, nil
@@ -271,6 +301,62 @@ func (r *VirtualServiceBuilder) CreateVirtualService(isvc *v1alpha2.InferenceSer
 		}
 		httpRoutes = append(httpRoutes, explainRoute)
 	}
+
+	// optionally add the fair route
+	fairRouteDestinations := []*istiov1alpha3.HTTPRouteDestination{}
+	if defaultFairRouteDestination, err := r.getFairnessRouteDestination(isvc.GetObjectMeta(), false, &isvc.Spec.Default, isvc.Status.Default, int32(defaultWeight)); err != nil {
+		return nil, err
+	} else {
+		if defaultFairRouteDestination != nil {
+			fairRouteDestinations = append(fairRouteDestinations, defaultFairRouteDestination)
+		}
+	}
+	if canaryFairRouteDestination, err := r.getFairnessRouteDestination(isvc.GetObjectMeta(), true, isvc.Spec.Canary, isvc.Status.Canary, int32(canaryWeight)); err != nil {
+		return nil, err
+	} else {
+		if canaryFairRouteDestination != nil {
+			fairRouteDestinations = append(fairRouteDestinations, canaryFairRouteDestination)
+		}
+	}
+
+	if len(fairRouteDestinations) > 0 {
+		fairRoute := &istiov1alpha3.HTTPRoute{
+			Match: []*istiov1alpha3.HTTPMatchRequest{
+				{
+					Uri: &istiov1alpha3.StringMatch{
+						MatchType: &istiov1alpha3.StringMatch_Prefix{
+							Prefix: constants.FairPrefix(isvc.Name),
+						},
+					},
+					Authority: &istiov1alpha3.StringMatch{
+						MatchType: &istiov1alpha3.StringMatch_Regex{
+							Regex: constants.HostRegExp(serviceHostname),
+						},
+					},
+					Gateways: []string{r.ingressConfig.IngressGateway},
+				},
+				{
+					Uri: &istiov1alpha3.StringMatch{
+						MatchType: &istiov1alpha3.StringMatch_Prefix{
+							Prefix: constants.FairPrefix(isvc.Name),
+						},
+					},
+					Authority: &istiov1alpha3.StringMatch{
+						MatchType: &istiov1alpha3.StringMatch_Regex{
+							Regex: constants.HostRegExp(network.GetServiceHostname(isvc.Name, isvc.Namespace)),
+						},
+					},
+					Gateways: []string{constants.KnativeLocalGateway},
+				},
+			},
+			Route: fairRouteDestinations,
+			Retries: &istiov1alpha3.HTTPRetry{
+				Attempts:      3,
+				PerTryTimeout: RetryTimeout,
+			},
+		}
+		httpRoutes = append(httpRoutes, fairRoute)
+	}
 	// extract the virtual service hostname from the predictor hostname
 	serviceURL := fmt.Sprintf("%s://%s%s", "http", serviceHostname, constants.InferenceServicePrefix(isvc.Name))
 
@@ -365,6 +451,24 @@ func getExplainStatusConfigurationSpec(endpointSpec *v1alpha2.EndpointSpec, comp
 		return nil, ExplainerHostnameUnknown
 	} else {
 		return &explainerStatus, ""
+	}
+}
+
+func getFairStatusConfigurationSpec(endpointSpec *v1alpha2.EndpointSpec, componentStatusMap *v1alpha2.ComponentStatusMap) (*v1alpha2.StatusConfigurationSpec, string) {
+	if endpointSpec.Fairness == nil {
+		return nil, FairnessSpecMissing
+	}
+
+	if componentStatusMap == nil {
+		return nil, FairnessStatusUnknown
+	}
+
+	if fairnessStatus, ok := (*componentStatusMap)[constants.Fairness]; !ok {
+		return nil, FairnessStatusUnknown
+	} else if len(fairnessStatus.Hostname) == 0 {
+		return nil, FairnessHostnameUnknown
+	} else {
+		return &fairnessStatus, ""
 	}
 }
 

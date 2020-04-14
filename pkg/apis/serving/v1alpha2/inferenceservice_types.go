@@ -43,6 +43,11 @@ type EndpointSpec struct {
 	// +optional
 	Explainer *ExplainerSpec `json:"explainer,omitempty"`
 
+	// Fairness defines the model fairness service spec,
+	// fairness service calls to predictor or transformer if it is specified.
+	// +optional
+	Fairness *ExplainerSpec `json:"fairness,omitempty"`
+
 	// Transformer defines the pre/post processing before and after the predictor call,
 	// transformer service calls to predictor service.
 	// +optional

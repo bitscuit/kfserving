@@ -63,6 +63,7 @@ var (
 	DefaultPredictorTimeout   int64 = 60
 	DefaultTransformerTimeout int64 = 120
 	DefaultExplainerTimeout   int64 = 300
+	DefaultFairnessTimeout    int64 = 300
 	DefaultScalingTarget            = "1"
 	DefaultMinReplicas              = 1
 )
@@ -106,6 +107,7 @@ var (
 const (
 	Predictor   InferenceServiceComponent = "predictor"
 	Explainer   InferenceServiceComponent = "explainer"
+	Fairness    InferenceServiceComponent = "fairness"
 	Transformer InferenceServiceComponent = "transformer"
 )
 
@@ -113,6 +115,7 @@ const (
 const (
 	Predict InferenceServiceVerb = "predict"
 	Explain InferenceServiceVerb = "explain"
+	Fair    InferenceServiceVerb = "fair"
 )
 
 // InferenceService Endpoint Ports
@@ -197,8 +200,16 @@ func DefaultExplainerServiceName(name string) string {
 	return name + "-" + string(Explainer) + "-" + InferenceServiceDefault
 }
 
+func DefaultFairnessServiceName(name string) string {
+	return name + "-" + string(Fairness) + "-" + InferenceServiceDefault
+}
+
 func CanaryExplainerServiceName(name string) string {
 	return name + "-" + string(Explainer) + "-" + InferenceServiceCanary
+}
+
+func CanaryFairnessServiceName(name string) string {
+	return name + "-" + string(Fairness) + "-" + InferenceServiceCanary
 }
 
 func DefaultTransformerServiceName(name string) string {
@@ -227,6 +238,10 @@ func PredictPrefix(name string) string {
 
 func ExplainPrefix(name string) string {
 	return fmt.Sprintf("/v1/models/%s:explain", name)
+}
+
+func FairPrefix(name string) string {
+	return fmt.Sprintf("/v1/models/%s:fair", name)
 }
 
 func PredictorURL(metadata v1.ObjectMeta, isCanary bool) string {

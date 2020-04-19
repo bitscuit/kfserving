@@ -9,7 +9,7 @@ spec:
     predictor:
       custom:
         container:
-          image: {username}/custom-sample
+          image: henryhli/custom-sample
           env:
             - name: GREETING_TARGET
               value: "Python KFServing Sample"

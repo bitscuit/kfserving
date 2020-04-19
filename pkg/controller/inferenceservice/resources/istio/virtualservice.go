@@ -19,11 +19,12 @@ package istio
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
+	"time"
+
 	"github.com/gogo/protobuf/types"
 	"knative.dev/pkg/apis"
 	"knative.dev/pkg/network"
-	"strings"
-	"time"
 
 	"github.com/kubeflow/kfserving/pkg/apis/serving/v1alpha2"
 	"github.com/kubeflow/kfserving/pkg/constants"
@@ -207,6 +208,32 @@ func (r *VirtualServiceBuilder) CreateVirtualService(isvc *v1alpha2.InferenceSer
 				},
 				Gateways: []string{constants.KnativeLocalGateway},
 			},
+			{
+				Uri: &istiov1alpha3.StringMatch{
+					MatchType: &istiov1alpha3.StringMatch_Prefix{
+						Prefix: constants.BiasDetectorPrefix(isvc.Name),
+					},
+				},
+				Authority: &istiov1alpha3.StringMatch{
+					MatchType: &istiov1alpha3.StringMatch_Regex{
+						Regex: constants.HostRegExp(serviceHostname),
+					},
+				},
+				Gateways: []string{r.ingressConfig.IngressGateway},
+			},
+			{
+				Uri: &istiov1alpha3.StringMatch{
+					MatchType: &istiov1alpha3.StringMatch_Prefix{
+						Prefix: constants.BiasDetectorPrefix(isvc.Name),
+					},
+				},
+				Authority: &istiov1alpha3.StringMatch{
+					MatchType: &istiov1alpha3.StringMatch_Regex{
+						Regex: constants.HostRegExp(network.GetServiceHostname(isvc.Name, isvc.Namespace)),
+					},
+				},
+				Gateways: []string{constants.KnativeLocalGateway},
+			},
 		},
 		Route: predictRouteDestinations,
 		Retries: &istiov1alpha3.HTTPRetry{
@@ -253,6 +280,32 @@ func (r *VirtualServiceBuilder) CreateVirtualService(isvc *v1alpha2.InferenceSer
 					Uri: &istiov1alpha3.StringMatch{
 						MatchType: &istiov1alpha3.StringMatch_Prefix{
 							Prefix: constants.ExplainPrefix(isvc.Name),
+						},
+					},
+					Authority: &istiov1alpha3.StringMatch{
+						MatchType: &istiov1alpha3.StringMatch_Regex{
+							Regex: constants.HostRegExp(network.GetServiceHostname(isvc.Name, isvc.Namespace)),
+						},
+					},
+					Gateways: []string{constants.KnativeLocalGateway},
+				},
+				{
+					Uri: &istiov1alpha3.StringMatch{
+						MatchType: &istiov1alpha3.StringMatch_Prefix{
+							Prefix: constants.BiasDetectorPrefix(isvc.Name),
+						},
+					},
+					Authority: &istiov1alpha3.StringMatch{
+						MatchType: &istiov1alpha3.StringMatch_Regex{
+							Regex: constants.HostRegExp(serviceHostname),
+						},
+					},
+					Gateways: []string{r.ingressConfig.IngressGateway},
+				},
+				{
+					Uri: &istiov1alpha3.StringMatch{
+						MatchType: &istiov1alpha3.StringMatch_Prefix{
+							Prefix: constants.BiasDetectorPrefix(isvc.Name),
 						},
 					},
 					Authority: &istiov1alpha3.StringMatch{

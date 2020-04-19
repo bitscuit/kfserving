@@ -229,6 +229,10 @@ func ExplainPrefix(name string) string {
 	return fmt.Sprintf("/v1/models/%s:explain", name)
 }
 
+func BiasDetectorPrefix(name string) string {
+	return fmt.Sprintf("/v1/models/%s:biasDetector", name)
+}
+
 func PredictorURL(metadata v1.ObjectMeta, isCanary bool) string {
 	serviceName := DefaultPredictorServiceName(metadata.Name)
 	if isCanary {

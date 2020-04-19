@@ -5,7 +5,7 @@ from flask import Flask
 app = Flask(__name__)
 
 
-@app.route('/v1/models/custom-sample:predict')
+@app.route('/v1/models/custom-sample:biasDetector')
 def hello_world():
     greeting_target = os.environ.get('GREETING_TARGET', 'World')
     return 'Hello {}!\n'.format(greeting_target)

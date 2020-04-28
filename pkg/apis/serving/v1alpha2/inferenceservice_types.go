@@ -43,6 +43,11 @@ type EndpointSpec struct {
 	// +optional
 	Explainer *ExplainerSpec `json:"explainer,omitempty"`
 
+	// Explainer defines the model explanation service spec,
+	// explainer service calls to predictor or transformer if it is specified.
+	// +optional
+	BiasDetector *BiasDetector `json:"biasDetector,omitempty"`
+
 	// Transformer defines the pre/post processing before and after the predictor call,
 	// transformer service calls to predictor service.
 	// +optional
@@ -114,6 +119,15 @@ type PredictorSpec struct {
 type ExplainerSpec struct {
 	// Spec for alibi explainer
 	Alibi *AlibiExplainerSpec `json:"alibi,omitempty"`
+	// Spec for a custom explainer
+	Custom *CustomSpec `json:"custom,omitempty"`
+
+	DeploymentSpec `json:",inline"`
+}
+
+// ExplainerSpec defines the arguments for a model explanation server,
+// The following fields follow a "1-of" semantic. Users must specify exactly one spec.
+type BiasDetector struct {
 	// Spec for a custom explainer
 	Custom *CustomSpec `json:"custom,omitempty"`
 
